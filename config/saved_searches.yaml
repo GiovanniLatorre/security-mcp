@@ -1,0 +1,78 @@
+# Splunk Cloud — saved searches for Security MCP
+#
+# Pre-compute heavy queries (CloudTrail ~170GB/dia) and store results in the
+# dedicated `security_mcp` index. The MCP reads this index (instant) instead
+# of scanning raw CloudTrail (crashes/timeouts).
+#
+# Index: security_mcp (365 days retention, ~11 MB/year)
+#
+# HOW TO CREATE each saved search:
+#   1. Settings > Searches, reports, and alerts > New Report
+#   2. Paste the spl_query as the search string
+#   3. Set Time Range to "Last 24 hours"
+#   4. Save
+#   5. Open the saved search > Edit > Edit Schedule
+#   6. Check "Schedule this search"
+#   7. Schedule: Cron > 0 6 * * *  (06:00 UTC daily)
+#   8. Time Range: Last 24 hours
+#   9. Save
+#  10. Click "Run" once manually to populate initial data
+#  11. Verify: index=security_mcp source=<source_name> | head 5
+
+saved_searches:
+
+  - name: cloudtrail_api_errors_daily
+    description: >
+      Top API calls by volume from aws_cloudtrail (excl. AccessDenied).
+      Includes BOTH real errors and high-volume successful calls.
+      The MCP separates them: errorCode!="success" = broken automation,
+      errorCode="success" = legitimate but costly logging.
+    spl_query: >
+      index=aws_cloudtrail errorCode!="" errorCode!="AccessDenied"
+      errorCode!="Client.UnauthorizedAccess"
+      | stats count by eventName, errorCode, userIdentity.arn, recipientAccountId
+      | where count >= 1000
+      | sort -count
+      | head 30
+      | collect index=security_mcp source=cloudtrail_api_errors
+    schedule: "0 6 * * *"
+    verify: index=security_mcp source=cloudtrail_api_errors | head 5
+
+  - name: cloudtrail_top_events_daily
+    description: >
+      Top eventNames by volume. Identifies who consumes most CloudTrail.
+    spl_query: >
+      index=aws_cloudtrail
+      | stats count by eventName
+      | sort -count
+      | head 20
+      | collect index=security_mcp source=cloudtrail_top_events
+    schedule: "0 6 * * *"
+    verify: index=security_mcp source=cloudtrail_top_events | head 5
+
+  - name: cloudtrail_error_delta
+    description: >
+      Today vs yesterday error count comparison for cost trend detection.
+    spl_query: >
+      index=aws_cloudtrail errorCode!=""
+      | stats count as today_errors
+      | appendcols [search index=aws_cloudtrail errorCode!=""
+        earliest=-48h latest=-24h | stats count as yesterday_errors]
+      | eval delta=today_errors-yesterday_errors
+      | eval pct_change=round(delta/yesterday_errors*100,1)
+      | collect index=security_mcp source=cloudtrail_error_delta
+    schedule: "0 6 * * *"
+    verify: index=security_mcp source=cloudtrail_error_delta | head 5
+
+  - name: splunk_ingestion_by_index
+    description: >
+      GB ingested per Splunk index. Cost and license visibility.
+    spl_query: >
+      index=_internal source=*license_usage.log type=Usage
+      | stats sum(b) as bytes by idx
+      | eval GB=round(bytes/1024/1024/1024,2)
+      | sort -GB
+      | head 20
+      | collect index=security_mcp source=splunk_ingestion_by_index
+    schedule: "0 6 * * *"
+    verify: index=security_mcp source=splunk_ingestion_by_index | head 5

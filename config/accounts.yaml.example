@@ -1,0 +1,14 @@
+# Copy to accounts.yaml and fill with your AWS SSO profiles (never commit accounts.yaml).
+escalation_user: "your.name"
+
+accounts:
+  example-staging:
+    profile: "readonly@your-org-staging"
+    account_id: "000000000000"
+    guardduty_detector: null
+    eks_clusters: []
+
+  example-prod:
+    profile: "readonly@your-org-prod"
+    account_id: "111111111111"
+    guardduty_detector: null

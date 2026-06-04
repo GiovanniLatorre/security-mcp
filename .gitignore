@@ -1,0 +1,24 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+config/accounts.yaml
+
+# Local data (playbooks, posture snapshots, audit)
+data/
+*.db
+
+# Keys
+*.pem
+*.key
+
+# OS
+.DS_Store
